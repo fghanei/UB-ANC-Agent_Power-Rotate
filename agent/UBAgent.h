@@ -6,6 +6,7 @@
 class QTimer;
 class Vehicle;
 class UBNetwork;
+class UBPower;
 
 class UBAgent : public QObject
 {
@@ -55,6 +56,7 @@ protected:
 protected:    
     Vehicle* m_mav;
     UBNetwork* m_net;
+    UBPower* m_power;
 
     QTimer* m_timer;
 };

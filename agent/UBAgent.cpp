@@ -1,5 +1,6 @@
 #include "UBAgent.h"
 #include "UBNetwork.h"
+#include "UBPower.h"
 
 #include "UBConfig.h"
 
@@ -15,6 +16,9 @@ UBAgent::UBAgent(QObject *parent) : QObject(parent),
 {
     m_net = new UBNetwork;
     connect(m_net, SIGNAL(dataReady(quint8, QByteArray)), this, SLOT(dataReadyEvent(quint8, QByteArray)));
+
+    m_power = new UBPower;
+    connect(m_power, SIGNAL(dataReady(quint8, QByteArray)), this, SLOT(dataReadyEvent(quint8, QByteArray)));
 
     m_timer = new QTimer;
     connect(m_timer, SIGNAL(timeout()), this, SLOT(missionTracker()));
@@ -61,7 +65,8 @@ void UBAgent::startAgent() {
     connect(qgcApp()->toolbox()->multiVehicleManager(), SIGNAL(vehicleRemoved(Vehicle*)), this, SLOT(vehicleRemovedEvent(Vehicle*)));
 
     m_net->connectToHost(QHostAddress::LocalHost, 10 * id + NET_PORT);
-    m_timer->start(MISSION_TRACK_RATE);
+    m_power->connectToHost(QHostAddress::LocalHost, PWR_PORT);
+    m_timer->start(1000.0*MISSION_TRACK_DELAY);
 }
 
 void UBAgent::setMAV(Vehicle* mav) {
@@ -166,6 +171,8 @@ void UBAgent::stageTakeoff() {
     if (m_mav->altitudeRelative()->rawValue().toDouble() > TAKEOFF_ALT - POINT_ZONE) {
         m_mission_data.stage = 0;
         m_mission_stage = STAGE_MISSION;
+        qInfo() << "Took off, starting measurement";
+        m_power->sendData(UBPower::PWR_START, QByteArray());
     }
 }
 
@@ -178,29 +185,17 @@ void UBAgent::stageLand() {
 
 void UBAgent::stageMission() {
     static QGeoCoordinate dest;
+    QByteArray info;
 
-    if (m_mission_data.stage == 0) {
-        m_mission_data.stage++;
-
-        dest = m_mav->coordinate().atDistanceAndAzimuth(10, 90); // 0 -> North, 90 (M_PI / 2) -> East
-        m_mav->guidedModeGotoLocation(dest);
-
-        return;
-    }
-
-    if (m_mission_data.stage == 1) {
-        if (m_mav->coordinate().distanceTo(dest) < POINT_ZONE) {
-            m_mission_data.stage++;
-        }
-
-        return;
-    }
-
-    if (m_mission_data.tick < (20 * 1000 / MISSION_TRACK_RATE)) {
+    if (m_mission_data.tick < (20 * 1.0 / MISSION_TRACK_DELAY)) {
         m_mission_data.tick++;
-        m_net->sendData(m_mav->id() + 1, QByteArray(1, MAV_CMD_NAV_TAKEOFF));
+        info += "The tick is: ";
+        info += QByteArray::number(m_mission_data.tick, 'f', 3);
+        m_power->sendData(UBPower::PWR_INFO, info);
     } else {
         m_mav->guidedModeLand();
         m_mission_stage = STAGE_LAND;
+        qInfo() << "Finishing measurement and landing";
+        m_power->sendData(UBPower::PWR_STOP, QByteArray());
     }
 }

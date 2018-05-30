@@ -24,12 +24,16 @@ HEADERS += \
     UBAgent.h \
     UBPacket.h \
     UBNetwork.h \
+    UBPWRPacket.h \
+    UBPower.h \
 
 SOURCES += \
     main.cc \
     UBAgent.cpp \
     UBPacket.cpp \
     UBNetwork.cpp \
+    UBPWRPacket.cpp \
+    UBPower.cpp \
 
 #
 # QGroundControl Library
