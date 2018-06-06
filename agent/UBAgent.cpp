@@ -4,6 +4,7 @@
 
 #include "UBConfig.h"
 
+#include <QTime>
 #include <QTimer>
 #include <QCommandLineParser>
 
@@ -67,6 +68,8 @@ void UBAgent::startAgent() {
     m_net->connectToHost(QHostAddress::LocalHost, 10 * id + NET_PORT);
     m_power->connectToHost(QHostAddress::LocalHost, PWR_PORT);
     m_timer->start(1000.0*MISSION_TRACK_DELAY);
+
+    m_mission_data.reset();
 }
 
 void UBAgent::setMAV(Vehicle* mav) {
@@ -107,7 +110,7 @@ void UBAgent::vehicleRemovedEvent(Vehicle* mav) {
 
 void UBAgent::armedChangedEvent(bool armed) {
     if (!armed) {
-        m_mission_stage = STAGE_IDLE;
+        m_mission_state = STATE_IDLE;
         return;
     }
 
@@ -123,7 +126,7 @@ void UBAgent::armedChangedEvent(bool armed) {
     }
 
     m_mission_data.reset();
-    m_mission_stage = STAGE_TAKEOFF;
+    m_mission_state = STATE_TAKEOFF;
     qInfo() << "Mission starts...";
 
 //    m_mav->guidedModeTakeoff();
@@ -136,66 +139,95 @@ void UBAgent::armedChangedEvent(bool armed) {
 
 void UBAgent::flightModeChangedEvent(QString mode) {
     qInfo() << mode;
+    // automatic arm after switching from Land to Guided. be careful!
+    if (m_mission_data.previousFlightMode == "Land" && 
+        mode=="Guided" && !m_mav->armed()) {
+            m_mav->setArmed(true);
+    }
+    m_mission_data.previousFlightMode = mode;
 }
 
 void UBAgent::dataReadyEvent(quint8 srcID, QByteArray data) {
-    Q_UNUSED(data)
-    if(srcID == m_mav->id() - 1 && !m_mav->armed()) {
-        m_mav->setArmed(true);
-    }
+//    Q_UNUSED(data)
+    qInfo() << "Data received from srcID=" << srcID << ":\n" << data;
+//    This is used to arm one UAV by previous one.
+//    if(srcID == m_mav->id() - 1 && !m_mav->armed()) {
+//        m_mav->setArmed(true);
+//    }
 }
 
 void UBAgent::missionTracker() {
-    switch (m_mission_stage) {
-    case STAGE_IDLE:
-        stageIdle();
+    switch (m_mission_state) {
+    case STATE_IDLE:
+        stateIdle();
         break;
-    case STAGE_TAKEOFF:
-        stageTakeoff();
+    case STATE_TAKEOFF:
+        stateTakeoff();
         break;
-    case STAGE_MISSION:
-        stageMission();
+    case STATE_MISSION:
+        stateMission();
         break;
-    case STAGE_LAND:
-        stageLand();
+    case STATE_LAND:
+        stateLand();
         break;
     default:
         break;
     }
 }
 
-void UBAgent::stageIdle() {
+void UBAgent::stateIdle() {
 }
 
-void UBAgent::stageTakeoff() {
+void UBAgent::stateTakeoff() {
     if (m_mav->altitudeRelative()->rawValue().toDouble() > TAKEOFF_ALT - POINT_ZONE) {
         m_mission_data.stage = 0;
-        m_mission_stage = STAGE_MISSION;
-        qInfo() << "Took off, starting measurement";
-        m_power->sendData(UBPower::PWR_START, QByteArray());
+        m_mission_state = STATE_MISSION;
+        qInfo() << "Takeoff completed.";
     }
 }
 
-void UBAgent::stageLand() {
+void UBAgent::stateLand() {
     if (m_mav->altitudeRelative()->rawValue().toDouble() < POINT_ZONE) {
-        m_mission_stage = STAGE_IDLE;
-        qInfo() << "Mission ends";
+        m_mission_state = STATE_IDLE;
+        qInfo() << "Land completed.";
     }
 }
 
-void UBAgent::stageMission() {
+void UBAgent::stateMission() {
     static QGeoCoordinate dest;
     QByteArray info;
+    unsigned int now;
 
-    if (m_mission_data.tick < (20 * 1.0 / MISSION_TRACK_DELAY)) {
-        m_mission_data.tick++;
-        info += "The tick is: ";
-        info += QByteArray::number(m_mission_data.tick, 'f', 3);
-        m_power->sendData(UBPower::PWR_INFO, info);
-    } else {
-        m_mav->guidedModeLand();
-        m_mission_stage = STAGE_LAND;
-        qInfo() << "Finishing measurement and landing";
-        m_power->sendData(UBPower::PWR_STOP, QByteArray());
+    now = QDateTime::currentMSecsSinceEpoch();
+    if (m_mission_data.stage == 0) {
+        m_mission_data.stage++;
+        qInfo() << "Starting measurement";
+        m_power->sendData(UBPower::PWR_START, QByteArray());
+    }// intentional fall-thru
+// hover
+    if (m_mission_data.stage == 1) {
+	m_mission_data.tick++;
+        info.clear();
+	info += QByteArray::number(now/1000.0, 'f', 3);
+	info += " The tick is: ";
+	info += QByteArray::number(m_mission_data.tick);
+	m_power->sendData(UBPower::PWR_INFO, info);
+	if (m_mission_data.tick >= (20 * 1.0 / MISSION_TRACK_DELAY)) {
+            qInfo() << "Finishing measurement and landing";
+            m_power->sendData(UBPower::PWR_STOP, QByteArray());
+	    m_mission_state = STATE_LAND;
+	    m_mav->guidedModeLand();
+            m_mission_data.stage++;
+        }
     }
+// arming next uav
+//    if (m_mission_data.stage == 2) {
+//        m_net->sendData(m_mav->id() + 1, QByteArray(1, MAV_CMD_NAV_TAKEOFF));
+//        m_mission_data.stage++;
+//    }    
+// move
+//    if (m_mission_data.stage == 3) {
+//        dest = m_mav->coordinate().atDistanceAndAzimuth(10, 90); // 0 -> North, 90 (M_PI / 2) -> East
+//        m_mav->guidedModeGotoLocation(dest);
+//    }    
 }

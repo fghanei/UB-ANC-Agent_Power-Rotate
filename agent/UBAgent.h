@@ -30,26 +30,28 @@ protected slots:
     void missionTracker();
 
 protected:
-    void stageIdle();
-    void stageTakeoff();
-    void stageMission();
-    void stageLand();
+    void stateIdle();
+    void stateTakeoff();
+    void stateMission();
+    void stateLand();
 
 protected:
-    enum EMissionStage {
-        STAGE_IDLE,
-        STAGE_TAKEOFF,
-        STAGE_MISSION,
-        STAGE_LAND,
-    } m_mission_stage;
+    enum EMissionState {
+        STATE_IDLE,
+        STATE_TAKEOFF,
+        STATE_MISSION,
+        STATE_LAND,
+    } m_mission_state;
 
     struct SMissionData {
         int stage;
         int tick;
+        QString previousFlightMode;
 
         void reset() {
             stage = 0;
             tick = 0;
+            previousFlightMode = "";
         }
     } m_mission_data;
 
