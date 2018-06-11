@@ -233,7 +233,7 @@ void UBAgent::stateMission() {
     static QGeoCoordinate dest;
     QByteArray info;
     unsigned long int now;
-    int hover_time=12;
+    int hover_time=60;
 
     now = QDateTime::currentMSecsSinceEpoch();
     switch (m_mission_data.stage) {
@@ -246,13 +246,15 @@ void UBAgent::stateMission() {
         }
         // hover
         case (1): {
-	    m_mission_data.tick++;
-            // sending information to the logger
-            info.clear();
-            info += QByteArray::number(now/1000.0, 'f', 3);
-            info += " The tick is: ";
-            info += QByteArray::number(m_mission_data.tick);
-            m_power->sendData(UBPower::PWR_INFO, info);
+            m_mission_data.tick++;
+            if (m_mission_data.tick%2==0) {
+	            // sending information to the logger, this works for tick = half a second
+	            info.clear();
+	            info += QByteArray::number(now/1000.0, 'f', 3);
+	            info += " Seconds passed: ";
+	            info += QByteArray::number(m_mission_data.tick/2);
+	            m_power->sendData(UBPower::PWR_INFO, info);
+            }
 
             if (m_mission_data.tick >= (hover_time * 1.0 / MISSION_TRACK_DELAY - 0.001)) {
                 qInfo() << "Hover complete, sending EVENT packet";
