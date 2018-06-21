@@ -12,6 +12,8 @@
 #include "TCPLink.h"
 #include "QGCApplication.h"
 
+#define RC_OVERRIDE_YAW 1600
+
 UBAgent::UBAgent(QObject *parent) : QObject(parent),
     m_mav(nullptr)
 {
@@ -187,6 +189,12 @@ void UBAgent::stateTakeoff() {
     	if (m_mav->altitudeRelative()->rawValue().toDouble() > TAKEOFF_ALT - POINT_ZONE) {
             m_mission_data.tick=0;
             m_mission_data.stage++;
+            mavlink_message_t msg;
+            mavlink_msg_rc_channels_override_pack(
+			255, 1, &msg,
+			m_mav->id(), m_mav->defaultComponentId(),
+                        0, 0, 0, RC_OVERRIDE_YAW, 0, 0, 0, 0);
+            m_mav->sendMessageOnLink(m_mav->priorityLink(), msg);
 	}
     }
     if (m_mission_data.stage == 1) {
@@ -233,7 +241,7 @@ void UBAgent::stateMission() {
     static QGeoCoordinate dest;
     QByteArray info;
     unsigned long int now;
-    int hover_time=60;
+    int hover_time=120;
 
     now = QDateTime::currentMSecsSinceEpoch();
     switch (m_mission_data.stage) {
@@ -260,6 +268,12 @@ void UBAgent::stateMission() {
                 qInfo() << "Hover complete, sending EVENT packet";
                 m_power->sendData(UBPower::PWR_EVENT, QByteArray());
                 qInfo() << "Landing....";
+                mavlink_message_t msg;
+                mavlink_msg_rc_channels_override_pack(
+			255, 1, &msg,
+			m_mav->id(), m_mav->defaultComponentId(),
+                        0, 0, 0, 0, 0, 0, 0, 0);
+                m_mav->sendMessageOnLink(m_mav->priorityLink(), msg);
                 m_mission_data.stage=0;
                 m_mission_state = STATE_LAND;
                 m_mav->guidedModeLand();
