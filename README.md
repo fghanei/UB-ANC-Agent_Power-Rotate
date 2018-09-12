@@ -32,7 +32,7 @@ Then we can use `qmake` to build the agent.
 ```
 cd ~
 mkdir ub-anc && cd ub-anc
-git clone https://github.com/fghanei/UB-ANC-Agent_Power-Hover.git
+git clone https://github.com/fghanei/UB-ANC-Agent_Power-Rotate.git
 mkdir build && cd build
 qmake ../UB-ANC-Agent_Power-Hover
 ```
